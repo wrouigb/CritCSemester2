@@ -1,9 +1,8 @@
 import tkinter as tk
-from tkinter import *
 from tkinter import ttk
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 import math
 
 class GeometryCalculator:
@@ -20,22 +19,40 @@ class GeometryCalculator:
         self.calculation_combobox = ttk.Combobox(
             self.main_frame, 
             textvariable=self.calculation_var,
-            values=["Distance between points", 
-                    "Circle from 3 points",
-                    "Slope between points"]
+            values=[
+                "Calculate Distance to origin (0, 0)",
+                "Calculate Distance Between Two Points",
+                "Calculate Midpoint",
+                "Calculate Gradient",
+                "Calculate the Equation of a line"
+            ]
         )
         self.calculation_combobox.current(0)
         self.calculation_combobox.grid(row=0, column=0, pady=5)
+        self.calculation_var.trace_add('write', lambda *args: self.create_input_fields())
         
         # Coordinate input fields
         self.input_frame = tk.Frame(self.main_frame)
         self.input_frame.grid(row=1, column=0, pady=5)
         
         # Plot area
-        self.figure = plt.Figure(figsize=(5, 4), dpi=100)
+        self.figure = plt.Figure(figsize=(10, 8), dpi=100)
         self.ax = self.figure.add_subplot(111)
+        self.ax.set_xlim(-100, 100)
+        self.ax.set_ylim(-100, 100)
+        
+        # Configure grid and ticks
+        self.ax.xaxis.set_major_locator(MultipleLocator(10))
+        self.ax.yaxis.set_major_locator(MultipleLocator(10))
+        self.ax.xaxis.set_major_formatter(FormatStrFormatter('%d'))
+        self.ax.yaxis.set_major_formatter(FormatStrFormatter('%d'))
+        self.ax.grid(which='major', linestyle='--', linewidth=0.5)
+        
         self.canvas = FigureCanvasTkAgg(self.figure, master=self.main_frame)
         self.canvas.get_tk_widget().grid(row=2, column=0, pady=5)
+        
+        # Connect click event
+        self.canvas.mpl_connect('button_press_event', self.on_click)
         
         # Buttons
         self.calculate_btn = tk.Button(
@@ -49,21 +66,15 @@ class GeometryCalculator:
         self.result_label = tk.Label(self.main_frame, text="")
         self.result_label.grid(row=4, column=0, pady=5)
         
-        # Initialize input fields
         self.create_input_fields()
-        
+
     def create_input_fields(self):
-        # Clear existing fields
         for widget in self.input_frame.winfo_children():
             widget.destroy()
             
-        # Create new fields based on calculation type
         calculation = self.calculation_var.get()
-        if "Circle" in calculation:
-            points = 3
-        else:
-            points = 2
-            
+        points = 1 if "Distance to origin" in calculation else 2
+        
         self.entries = []
         for i in range(points):
             tk.Label(self.input_frame, text=f"Point {i+1} (x,y):").grid(row=i, column=0)
@@ -71,14 +82,12 @@ class GeometryCalculator:
             entry.grid(row=i, column=1)
             self.entries.append(entry)
             
-        # Add plot button
-        self.plot_btn = tk.Button(
+        tk.Button(
             self.input_frame, 
             text="Plot Points", 
             command=self.plot_points
-        )
-        self.plot_btn.grid(row=points, columnspan=2, pady=5)
-        
+        ).grid(row=points, columnspan=2, pady=5)
+
     def get_coordinates(self):
         coords = []
         for entry in self.entries:
@@ -93,21 +102,58 @@ class GeometryCalculator:
         self.ax.clear()
         coords = self.get_coordinates()
         
+        # Reapply grid settings after clear
+        self.ax.xaxis.set_major_locator(MultipleLocator(20))
+        self.ax.yaxis.set_major_locator(MultipleLocator(20))
+        self.ax.xaxis.set_major_formatter(FormatStrFormatter('%d'))
+        self.ax.yaxis.set_major_formatter(FormatStrFormatter('%d'))
+        self.ax.grid(which='major', linestyle='--', linewidth=0.5)
+
         if coords:
             xs, ys = zip(*coords)
             self.ax.scatter(xs, ys, color='red')
             
-            # Draw connecting lines for certain calculations
+            # Auto-adjust axis with 10% padding
+            pad_factor = 0.1
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            x_pad = (x_max - x_min) * pad_factor if x_max != x_min else 10
+            y_pad = (y_max - y_min) * pad_factor if y_max != y_min else 10
+            
+            self.ax.set_xlim(x_min - x_pad, x_max + x_pad)
+            self.ax.set_ylim(y_min - y_pad, y_max + y_pad)
+            
             if len(coords) == 2:
                 self.ax.plot(xs, ys, 'b--')
-            elif len(coords) == 3:
-                xs += (xs[0],)
-                ys += (ys[0],)
-                self.ax.plot(xs, ys, 'g--')
-                
-            self.ax.grid(True)
-            self.canvas.draw()
+        else:
+            # Reset to initial view with grid labels
+            self.ax.set_xlim(-100, 100)
+            self.ax.set_ylim(-100, 100)
+        
+        # Add x and y axis lines at (0, 0)
+        self.ax.axhline(y=0, color='k', linewidth=0.5)
+        self.ax.axvline(x=0, color='k', linewidth=0.5)
             
+        self.canvas.draw()
+
+    def on_click(self, event):
+        if event.inaxes:
+            x, y = event.xdata, event.ydata
+            print(f"Clicked at ({x:.2f}, {y:.2f})")
+            self.result_label.config(text=f"Clicked at ({x:.2f}, {y:.2f})")
+            
+            # Fill in the clicked coordinates into the input fields
+            for i, entry in enumerate(self.entries):
+                try:
+                    x_val, y_val = map(float, entry.get().split(','))
+                except ValueError:
+                    entry.delete(0, tk.END)
+                    entry.insert(tk.END, f"{x:.2f},{y:.2f}")
+                    break
+            else:
+                # If all fields are filled, do nothing
+                pass
+
     def perform_calculation(self):
         coords = self.get_coordinates()
         if not coords:
@@ -117,42 +163,47 @@ class GeometryCalculator:
         calculation = self.calculation_var.get()
         result = ""
         
-        if calculation == "Distance between points":
-            dx = coords[1][0] - coords[0][0]
-            dy = coords[1][1] - coords[0][1]
+        if calculation == "Calculate Distance to origin (0, 0)":
+            x, y = coords[0]
+            distance = math.sqrt(x**2 + y**2)
+            result = f"Distance to origin: {distance:.2f}"
+            
+        elif calculation == "Calculate Distance Between Two Points":
+            (x1, y1), (x2, y2) = coords
+            dx = x2 - x1
+            dy = y2 - y1
             distance = math.sqrt(dx**2 + dy**2)
             result = f"Distance: {distance:.2f}"
             
-        elif calculation == "Slope between points":
-            dx = coords[1][0] - coords[0][0]
-            dy = coords[1][1] - coords[0][1]
+        elif calculation == "Calculate Midpoint":
+            (x1, y1), (x2, y2) = coords
+            mid_x = (x1 + x2) / 2
+            mid_y = (y1 + y2) / 2
+            result = f"Midpoint: ({mid_x:.2f}, {mid_y:.2f})"
+            
+        elif calculation == "Calculate Gradient":
+            (x1, y1), (x2, y2) = coords
+            dx = x2 - x1
+            dy = y2 - y1
             if dx == 0:
-                result = "Slope: undefined (vertical line)"
+                result = "Gradient: undefined (vertical line)"
             else:
-                slope = dy / dx
-                result = f"Slope: {slope:.2f}"
+                gradient = dy / dx
+                result = f"Gradient: {gradient:.2f}"
                 
-        elif calculation == "Circle from 3 points":
-            # Implementation based on search result [4]
-            (x1, y1), (x2, y2), (x3, y3) = coords
-            a = (x2 - x3)**2 + (y2 - y3)**2
-            b = (x3 - x1)**2 + (y3 - y1)**2
-            c = (x1 - x2)**2 + (y1 - y2)**2
-            s = 2 * (a*b + b*c + c*a) - (a**2 + b**2 + c**2)
-            
-            px = (a*(b+c-a)*x1 + b*(c+a-b)*x2 + c*(a+b-c)*x3) / s
-            py = (a*(b+c-a)*y1 + b*(c+a-b)*y2 + c*(a+b-c)*y3) / s
-            
-            ar = math.sqrt(a)
-            br = math.sqrt(b)
-            cr = math.sqrt(c)
-            radius = (ar*br*cr) / math.sqrt((ar+br+cr)*(-ar+br+cr)*(ar-br+cr)*(ar+br-cr))
-            
-            result = f"Center: ({px:.2f}, {py:.2f})\nRadius: {radius:.2f}"
-            self.ax.add_artist(plt.Circle((px, py), radius, color='blue', fill=False))
-            self.canvas.draw()
+        elif calculation == "Calculate the Equation of a line":
+            (x1, y1), (x2, y2) = coords
+            dx = x2 - x1
+            dy = y2 - y1
+            if dx == 0:
+                result = f"Equation: x = {x1:.2f}"
+            else:
+                m = dy / dx
+                c = y1 - m * x1
+                result = f"Equation: y = {m:.2f}x + {c:.2f}"
             
         self.result_label.config(text=result)
+        self.canvas.draw()
 
 if __name__ == "__main__":
     root = tk.Tk()
